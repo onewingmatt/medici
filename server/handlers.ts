@@ -3,7 +3,7 @@
 import type { Server, Socket } from 'socket.io'
 import { bid, createGame, drawCard, pass, stopDraw } from '../shared/engine'
 import { scoreDay } from '../shared/scoring'
-import type { GameState } from '../shared/types'
+import type { ActionResult, GameState } from '../shared/types'
 import {
   type Room,
   broadcastRoom,
@@ -15,7 +15,7 @@ import {
   newRoomPlayer,
   save,
 } from './rooms'
-import { clearBotTimer, FAST_BOT_DELAY_MS, scheduleBot, setOnAfterMutation } from './botScheduler'
+import { clearBotTimer, BOT_DELAY_MS, FAST_BOT_DELAY_MS, scheduleBot, setOnAfterMutation } from './botScheduler'
 
 const MIN_PLAYERS = Number(process.env.MIN_PLAYERS ?? 2)
 
@@ -51,10 +51,69 @@ function hasConnectedHuman(room: Room): boolean {
   return room.players.some((p) => !p.isBot && p.socketId != null)
 }
 
+// Advance the game past any player whose turn it currently is but who has
+// disconnected. The engine refuses actions from disconnected players and the
+// bid/selector rotation only skips them on FUTURE turns, so without this a
+// mid-game disconnect on your turn would stall the room forever. Auto-plays
+// them legally: selector draws one card (if needed) and stops; bidder passes.
+// Returns true if any action was taken.
+function advancePastDisconnected(room: Room): boolean {
+  let moved = false
+  let guard = 0
+  while (guard++ < 64) {
+    const g = room.game
+    if (!g) return moved
+    let actorId: string | null = null
+    if (g.phase === 'draw') actorId = g.playerOrder[g.selectorIndex] ?? null
+    else if (g.phase === 'auction') actorId = g.auction?.bidOrder[g.auction.currentBidderIndex] ?? null
+    else return moved
+    if (!actorId) return moved
+    const rp = room.players.find((p) => p.id === actorId)
+    if (!rp || !rp.disconnected) return moved
+    const gp = g.players.find((p) => p.id === actorId)
+    if (!gp) return moved
+    // The engine clones state, so flipping the flag must happen on the state
+    // we feed IN, and be restored on the state we get OUT — otherwise the
+    // returned state has the disconnected player marked connected again and
+    // the loop re-skips the same player forever.
+    gp.disconnected = false // engine blocks actions from disconnected players
+    let result: ActionResult
+    if (g.phase === 'draw') {
+      let s = g
+      if (s.group.length === 0) {
+        const r1 = drawCard(s, actorId)
+        if (!r1.ok) {
+          gp.disconnected = true
+          return moved
+        }
+        s = r1.state
+      }
+      const r2 = stopDraw(s, actorId)
+      if (!r2.ok) {
+        gp.disconnected = true
+        return moved
+      }
+      result = r2
+    } else {
+      result = pass(g, actorId)
+    }
+    if (!result.ok) return moved
+    room.game = result.state
+    const restored = room.game.players.find((p) => p.id === actorId)
+    if (restored) restored.disconnected = true
+    moved = true
+  }
+  return moved
+}
+
 // The single post-mutation choke point: persist → broadcast → auto-score →
 // schedule next bot. Registered with the bot scheduler so bots route through
 // the same broadcast path.
 function afterMutation(room: Room): void {
+  // A mutation may have advanced the turn to a disconnected player (e.g. a
+  // bidder who left mid-auction). Skip them before broadcasting so play
+  // never stalls on an absent player.
+  if (room.game) advancePastDisconnected(room)
   save(room)
   if (!room.game) return
   broadcastRoom(room, 'game:board', { game: serializeGame(room.game) })
@@ -62,6 +121,8 @@ function afterMutation(room: Room): void {
   if (room.game.phase === 'scoring') {
     const scored = scoreDay(room.game, Math.random)
     room.game = scored
+    // The new day can start with a disconnected selector; skip them too.
+    if (scored.phase !== 'game_over') advancePastDisconnected(room)
     save(room)
     broadcastRoom(room, 'game:scored', { game: serializeGame(scored) })
     if (scored.phase === 'game_over') {
@@ -128,6 +189,9 @@ export function registerHandlers(io: Server): void {
       }
       player.socketId = socket.id
       player.disconnected = false
+      // A reconnecting player has no overlay to dismiss (fresh page or tab),
+      // so release any summary hold to avoid a frozen-looking game.
+      room.pausedForSummary = false
       save(room)
       socket.emit('room:state', {
         ...roomPublic(room),
@@ -162,13 +226,18 @@ export function registerHandlers(io: Server): void {
         }
         save(room)
         broadcastRoom(room, 'room:state', roomPublic(room))
+        // Tell the leaver to drop the room UI (they are no longer in the
+        // broadcast list, so they would otherwise sit on a stale room view).
+        socket.emit('room:left')
       } else {
         // In game: mark disconnected, keep ship/money/tracks.
         player.socketId = null
         player.disconnected = true
         save(room)
         broadcastRoom(room, 'room:state', roomPublic(room))
-        scheduleBot(room)
+        // afterMutation advances past this player's turn if it is up.
+        if (!hasConnectedHuman(room)) room.pausedForSummary = false
+        afterMutation(room)
       }
     })
 
@@ -228,6 +297,7 @@ export function registerHandlers(io: Server): void {
           gp.isBot = true
           gp.difficulty = rp.difficulty
         }
+        if (gp) gp.disconnected = rp.disconnected
       }
       save(room)
       broadcastRoom(room, 'room:state', roomPublic(room))
@@ -302,11 +372,14 @@ export function registerHandlers(io: Server): void {
           gp.isBot = true
           gp.difficulty = rp.difficulty
         }
+        if (gp) gp.disconnected = rp.disconnected
       }
       room.pausedForSummary = false
       save(room)
       broadcastRoom(room, 'game:board', { game: serializeGame(room.game) })
-      scheduleBot(room)
+      // afterMutation advances past any disconnected player in the fresh game
+      // and schedules the first bot.
+      afterMutation(room)
     })
 
     // A human dismissed the day-scoring summary — release the bot hold.
@@ -324,7 +397,7 @@ export function registerHandlers(io: Server): void {
     socket.on('game:setSpeed', ({ fast } = {}) => {
       const room = getRoomBySocket(socket.id)
       if (!room || !room.game) return
-      const next = fast ? FAST_BOT_DELAY_MS : 800
+      const next = fast ? FAST_BOT_DELAY_MS : BOT_DELAY_MS
       if (room.botDelayMs === next) return
       room.botDelayMs = next
       save(room)
@@ -352,7 +425,9 @@ export function registerHandlers(io: Server): void {
         player.disconnected = true
         save(room)
         broadcastRoom(room, 'room:state', roomPublic(room))
-        scheduleBot(room)
+        // Keep the game moving past this player's turn if it is up.
+        if (!hasConnectedHuman(room)) room.pausedForSummary = false
+        afterMutation(room)
       }
     })
   })

@@ -1,6 +1,7 @@
 // Room manager — in-memory Map with periodic cleanup and SQLite write-through.
 import { randomUUID } from 'crypto'
 import { deleteRoom, loadRooms, saveRoom } from './db'
+import { BOT_DELAY_MS } from './botScheduler'
 import type { Difficulty, GameState } from '../shared/types'
 
 export interface RoomPlayer {
@@ -69,7 +70,7 @@ export function createRoom(hostName: string): { room: Room; host: RoomPlayer } {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     pausedForSummary: false,
-    botDelayMs: 800,
+    botDelayMs: BOT_DELAY_MS,
   }
   rooms.set(code, room)
   saveRoom(room)
@@ -164,6 +165,15 @@ export function restorePersistedRooms(): void {
       // Never restore a mid-summary pause — nobody is holding the overlay
       // after a server restart; the game should resume instead of stalling.
       room.pausedForSummary = false
+      // Socket IDs are meaningless across a restart (they reference dead
+      // sockets). Clear them so reconnect by token is not rejected as
+      // "already connected".
+      for (const p of room.players) {
+        if (!p.isBot) {
+          p.socketId = null
+          p.disconnected = true
+        }
+      }
       rooms.set(room.code, room)
     } else {
       deleteRoom(room.code)

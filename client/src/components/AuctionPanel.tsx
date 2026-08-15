@@ -104,7 +104,11 @@ export function AuctionPanel({ game, yourId }: { game: ClientGame; yourId: strin
               )}
               {' · '}to bid: <strong>{currentBidderName}</strong>
             </div>
-            {isBidder && (
+            {isBidder && (maxBid < minNext ? (
+              <div className="auction-wait">
+                You cannot outbid the high bid of {auction!.highBid} with {me.money} florins — pass
+              </div>
+            ) : (
               <div className="auction-actions">
                 <div className="bid-row">
                   <input
@@ -132,7 +136,7 @@ export function AuctionPanel({ game, yourId }: { game: ClientGame; yourId: strin
                   min {Math.min(minNext, maxBid)} · you have {me.money}
                 </div>
               </div>
-            )}
+            ))}
             {!isBidder && (
               <div className="auction-wait">
                 Waiting for {currentBidderName}…

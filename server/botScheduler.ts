@@ -15,6 +15,7 @@ import type { ActionResult } from '../shared/types'
 import type { Room } from './rooms'
 
 const BOT_DELAY_MS = Number(process.env.BOT_DELAY_MS ?? 800)
+export { BOT_DELAY_MS }
 export const FAST_BOT_DELAY_MS = 120
 const botTimers = new Map<string, NodeJS.Timeout>()
 

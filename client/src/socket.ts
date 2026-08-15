@@ -60,6 +60,13 @@ export function connect(): void {
     }
   })
 
+  socket.on('room:left', () => {
+    // Server confirmed we left the room — drop the room UI and the saved
+    // token so a reload doesn't try to rejoin it.
+    clearSavedRoom()
+    useStore.getState().reset()
+  })
+
   socket.on('game:board', ({ game }: { game: ClientGame }) => {
     useStore.getState().setGame(game)
   })

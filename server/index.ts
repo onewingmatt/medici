@@ -6,7 +6,9 @@ import { existsSync } from 'fs'
 import { dirname, join } from 'path'
 import { fileURLToPath } from 'url'
 import { registerHandlers } from './handlers'
-import { restorePersistedRooms, setIo, startCleanupTimer } from './rooms'
+import { restorePersistedRooms, rooms, setIo, startCleanupTimer } from './rooms'
+import { scoreDay } from '../shared/scoring'
+import { saveRoom } from './db'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT ?? 3001)
@@ -36,6 +38,14 @@ if (existsSync(clientDist)) {
 registerHandlers(io)
 
 restorePersistedRooms()
+// A room saved between the last mutation and auto-scoring restores in the
+// 'scoring' phase; nothing would ever trigger scoreDay for it. Score it now.
+for (const room of rooms.values()) {
+  if (room.game && room.game.phase === 'scoring') {
+    room.game = scoreDay(room.game, Math.random)
+    saveRoom(room)
+  }
+}
 startCleanupTimer()
 
 httpServer.listen(PORT, () => {
