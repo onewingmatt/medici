@@ -73,6 +73,9 @@ a.on('game:scored', (data) => {
   if (data.game.phase !== 'game_over') {
     setTimeout(() => a.emit('game:continue'), 300)
   }
+  // The scored state carries the next day's board; act on it too, or the
+  // game waits for a board that only arrives after a human acts.
+  maybeActA(data.game)
 })
 
 a.on('game_over', () => {
