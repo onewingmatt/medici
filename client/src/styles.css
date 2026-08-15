@@ -286,19 +286,21 @@ h1, h2, h3 {
 }
 
 .ship-mat-slots {
-  flex: 1;
+  flex: none;
+  height: 60px;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 6px 4px;
+  gap: 5px;
+  padding: 4px 2px;
 }
 
 .cargo-slot {
-  flex: none;
-  width: 44px;
-  height: 60px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 44px;
+  height: 100%;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.35);
   border: 1.5px dashed rgba(90, 60, 20, 0.45);
@@ -315,10 +317,9 @@ h1, h2, h3 {
 }
 
 /* Portrait cargo cards — the physical game's cards are taller than wide.
-   (They used to stretch to fill the slot, rendering as wide slabs.) */
+   Slots share the row and shrink on narrow sidebars instead of overflowing. */
 .ship-mat.wide .cargo-slot {
-  width: 36px;
-  height: 54px;
+  max-width: 37px;
 }
 
 .card-face {
@@ -404,6 +405,7 @@ h1, h2, h3 {
 }
 
 .ship-mat-footer {
+  margin-top: auto;
   padding: 1px 3px 0;
 }
 
