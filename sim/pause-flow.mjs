@@ -40,19 +40,30 @@ socket.on('room:state', (data) => {
 
 socket.on('game:board', (data) => {
   boardEvents++
-  if (pausedAt && !continuedAt) boardSinceScored++
+  if (pausedAt && !continuedAt) {
+    boardSinceScored++
+    const g = data.game
+    const actor = g.phase === 'draw'
+      ? g.players.find((p) => p.id === g.playerOrder[g.selectorIndex])?.id
+      : g.auction?.bidOrder[g.auction.currentBidderIndex] ?? null
+    console.log(`[during-pause board] phase=${g.phase} day=${g.day} actor=${actor} (me=${yourId})`)
+  }
   if (continuedAt) boardSinceContinue++
   applyState(data.game)
 })
 
 socket.on('game:scored', (data) => {
   scoreEvents++
-  applyState(data.game)
-  if (data.game.phase === 'game_over') return
-  // First day-boundary score (day 2 starting): bots must be paused.
+  // Set the pause marker BEFORE applyState so the observer does not act on
+  // the fresh day-2 state during the window we are testing.
   if (!pausedAt) {
     pausedAt = Date.now()
     boardSinceScored = 0
+  }
+  applyState(data.game)
+  if (data.game.phase === 'game_over') return
+  // First day-boundary score (day 2 starting): bots must be paused.
+  if (pausedAt && Date.now() - pausedAt < 100) {
     setTimeout(() => {
       if (!verifiedPause) {
         if (boardSinceScored === 0) {

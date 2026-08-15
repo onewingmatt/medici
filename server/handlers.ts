@@ -108,6 +108,15 @@ function advancePastDisconnected(room: Room): boolean {
   return moved
 }
 
+// Keep the engine's player flag in sync with the room's — the selector
+// rotation and bid order read the GAME player's disconnected flag, so a
+// stale value makes the engine skip (or refuse) a player who actually
+// reconnected. Must mirror every room-player flag change.
+function syncGameDisconnected(room: Room, playerId: string, value: boolean): void {
+  const gp = room.game?.players.find((p) => p.id === playerId)
+  if (gp) gp.disconnected = value
+}
+
 // The single post-mutation choke point: persist → broadcast → auto-score →
 // schedule next bot. Registered with the bot scheduler so bots route through
 // the same broadcast path.
@@ -191,6 +200,9 @@ export function registerHandlers(io: Server): void {
       }
       player.socketId = socket.id
       player.disconnected = false
+      // The skip logic may have marked the game player disconnected; clear
+      // it or the engine will keep skipping this player's turns.
+      syncGameDisconnected(room, player.id, false)
       // A reconnecting player has no overlay to dismiss (fresh page or tab),
       // so release any summary hold to avoid a frozen-looking game.
       room.pausedForSummary = false
@@ -235,6 +247,7 @@ export function registerHandlers(io: Server): void {
         // In game: mark disconnected, keep ship/money/tracks.
         player.socketId = null
         player.disconnected = true
+        syncGameDisconnected(room, player.id, true)
         save(room)
         broadcastRoom(room, 'room:state', roomPublic(room))
         // Drop the leaver's room UI + saved token so a refresh doesn't rejoin.
@@ -443,6 +456,7 @@ export function registerHandlers(io: Server): void {
       } else {
         player.socketId = null
         player.disconnected = true
+        syncGameDisconnected(room, player.id, true)
         save(room)
         broadcastRoom(room, 'room:state', roomPublic(room))
         // Keep the game moving past this player's turn if it is up.

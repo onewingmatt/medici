@@ -13,11 +13,23 @@ import {
 import { botAction, isBotsTurn } from '../shared/bot'
 import type { ActionResult } from '../shared/types'
 import type { Room } from './rooms'
+import { appendFileSync } from 'fs'
 
 const BOT_DELAY_MS = Number(process.env.BOT_DELAY_MS ?? 800)
 export { BOT_DELAY_MS }
 export const FAST_BOT_DELAY_MS = 120
 const botTimers = new Map<string, NodeJS.Timeout>()
+
+// Optional file-based debug log (MEDICI_DEBUG_LOG=/path) — off by default.
+const DEBUG_LOG = process.env.MEDICI_DEBUG_LOG ?? ''
+export function dbg(msg: string): void {
+  if (!DEBUG_LOG) return
+  try {
+    appendFileSync(DEBUG_LOG, `${Date.now()} ${msg}\n`)
+  } catch {
+    // ignore
+  }
+}
 
 // Hook called after a successful mutation (persist, broadcast, auto-score).
 // Defined by handlers.ts to avoid a circular import.
