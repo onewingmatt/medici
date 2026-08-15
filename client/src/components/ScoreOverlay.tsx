@@ -9,10 +9,12 @@ import { useStore } from '../store'
 export function ScoreOverlay({
   game,
   yourId,
+  isHost,
   onShowRules,
 }: {
   game: ClientGame
   yourId: string | null
+  isHost?: boolean
   onShowRules?: () => void
 }) {
   const dismissScored = useStore((s) => s.dismissScored)
@@ -127,9 +129,19 @@ export function ScoreOverlay({
 
         <div className="overlay-actions">
           {isGameOver ? (
-            <button className="btn btn-primary" onClick={() => emit('game:restart')}>
-              Play again
-            </button>
+            <>
+              <button className="btn btn-primary" onClick={() => emit('game:restart')}>
+                Play again
+              </button>
+              {isHost && (
+                <button className="btn btn-danger" onClick={() => emit('room:close')}>
+                  Close room
+                </button>
+              )}
+              <button className="btn" onClick={() => emit('room:leave')}>
+                Leave
+              </button>
+            </>
           ) : (
             <>
               {onShowRules && (

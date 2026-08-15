@@ -67,6 +67,12 @@ export function connect(): void {
     useStore.getState().reset()
   })
 
+  socket.on('room:closed', () => {
+    // Host closed the room — same cleanup for every client.
+    clearSavedRoom()
+    useStore.getState().reset()
+  })
+
   socket.on('game:board', ({ game }: { game: ClientGame }) => {
     useStore.getState().setGame(game)
   })

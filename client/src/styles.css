@@ -289,27 +289,36 @@ h1, h2, h3 {
   flex: 1;
   display: flex;
   flex-direction: row;
-  gap: 3px;
-  padding: 4px 2px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 4px;
 }
 
 .cargo-slot {
-  flex: 1;
-  min-width: 0;
-  height: auto;
-  min-height: 38px;
-  border-radius: 5px;
+  flex: none;
+  width: 44px;
+  height: 60px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.35);
   border: 1.5px dashed rgba(90, 60, 20, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .cargo-slot.filled {
   border-style: solid;
   border-color: transparent;
   background: transparent;
+}
+
+/* Portrait cargo cards — the physical game's cards are taller than wide.
+   (They used to stretch to fill the slot, rendering as wide slabs.) */
+.ship-mat.wide .cargo-slot {
+  width: 36px;
+  height: 54px;
 }
 
 .card-face {
@@ -693,6 +702,16 @@ h1, h2, h3 {
   background: rgba(255, 200, 80, 0.25);
   color: #ffe9a8;
   border-color: rgba(255, 200, 80, 0.6);
+}
+
+.btn-danger {
+  background: rgba(160, 40, 30, 0.85);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(190, 55, 40, 0.95);
 }
 
 /* ---------------- options menu ---------------- */

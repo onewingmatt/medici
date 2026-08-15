@@ -43,6 +43,7 @@ export function App() {
   const error = useStore((s) => s.error)
   const scheme = useStore((s) => s.playerScheme)
   const setScheme = useStore((s) => s.setPlayerScheme)
+  const isHost = room?.hostId === yourId
 
   // Re-assert the speed preference whenever a room loads (new room or reload).
   useEffect(() => {
@@ -81,6 +82,13 @@ export function App() {
         </div>
         <button className="btn btn-small btn-header" onClick={() => setShowRules(true)}>
           Scoring
+        </button>
+        <button
+          className="btn btn-small btn-header btn-leave"
+          onClick={() => emit('room:leave')}
+          title="Leave this game"
+        >
+          Leave
         </button>
         {outForDay && (
           <button
@@ -137,8 +145,8 @@ export function App() {
         </aside>
       </main>
 
-      {scoredGame && <ScoreOverlay game={scoredGame} yourId={yourId} onShowRules={() => setShowRules(true)} />}
-      {gameOver && <ScoreOverlay game={gameOver} yourId={yourId} onShowRules={() => setShowRules(true)} />}
+      {scoredGame && <ScoreOverlay game={scoredGame} yourId={yourId} isHost={isHost} onShowRules={() => setShowRules(true)} />}
+      {gameOver && <ScoreOverlay game={gameOver} yourId={yourId} isHost={isHost} onShowRules={() => setShowRules(true)} />}
       {showRules && <ScoringReference onClose={() => setShowRules(false)} />}
       {error && <div className="toast">{error}</div>}
     </div>

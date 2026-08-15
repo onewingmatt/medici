@@ -13,8 +13,10 @@ import {
   getRoomBySocket,
   joinRoom,
   newRoomPlayer,
+  rooms,
   save,
 } from './rooms'
+import { deleteRoom } from './db'
 import { clearBotTimer, BOT_DELAY_MS, FAST_BOT_DELAY_MS, scheduleBot, setOnAfterMutation } from './botScheduler'
 
 const MIN_PLAYERS = Number(process.env.MIN_PLAYERS ?? 2)
@@ -235,10 +237,28 @@ export function registerHandlers(io: Server): void {
         player.disconnected = true
         save(room)
         broadcastRoom(room, 'room:state', roomPublic(room))
+        // Drop the leaver's room UI + saved token so a refresh doesn't rejoin.
+        socket.emit('room:left')
         // afterMutation advances past this player's turn if it is up.
         if (!hasConnectedHuman(room)) room.pausedForSummary = false
         afterMutation(room)
       }
+    })
+
+    // Host closes the room for everyone: room is deleted, all clients reset.
+    socket.on('room:close', () => {
+      const room = getRoomBySocket(socket.id)
+      if (!room) return
+      const player = room.players.find((p) => p.socketId === socket.id)
+      if (!player || player.id !== room.hostId) return
+      for (const p of room.players) {
+        if (p.socketId) {
+          const s = io.sockets.sockets.get(p.socketId)
+          if (s) s.emit('room:closed')
+        }
+      }
+      rooms.delete(room.code)
+      deleteRoom(room.code)
     })
 
     socket.on('add_bot', ({ difficulty } = {}) => {
