@@ -1,0 +1,11 @@
+node_modules
+.git
+data/refs
+*.log
+*.db
+*.db-wal
+*.db-shm
+tests
+scripts
+sim
+client/dist

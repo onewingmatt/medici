@@ -1,0 +1,30 @@
+{
+  "name": "medici",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run",
+    "server": "tsx server/index.ts",
+    "typecheck": "tsc --noEmit --strict --module esnext --moduleResolution bundler --target es2022 --skipLibCheck shared/*.ts server/*.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "playwright": "^1.62.1",
+    "socket.io-client": "^4.8.3",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
+    "tsx": "^4.19.0"
+  }
+}
