@@ -15,6 +15,7 @@ import type { ActionResult } from '../shared/types'
 import type { Room } from './rooms'
 
 const BOT_DELAY_MS = Number(process.env.BOT_DELAY_MS ?? 800)
+export const FAST_BOT_DELAY_MS = 120
 const botTimers = new Map<string, NodeJS.Timeout>()
 
 // Hook called after a successful mutation (persist, broadcast, auto-score).
@@ -36,6 +37,8 @@ export function clearBotTimer(code: string): void {
 // If it is a bot's turn right now, schedule its action.
 export function scheduleBot(room: Room): void {
   if (!room || !room.game) return
+  // Day-scoring summary is up — hold bot play until a human dismisses it.
+  if (room.pausedForSummary) return
   const g = room.game
   if (g.phase !== 'draw' && g.phase !== 'auction') return
 
@@ -48,7 +51,8 @@ export function scheduleBot(room: Room): void {
   if (!rp || !rp.isBot) return
 
   clearBotTimer(room.code)
-  const timer = setTimeout(() => runBot(room, actorId), BOT_DELAY_MS)
+  const delay = room.botDelayMs ?? BOT_DELAY_MS
+  const timer = setTimeout(() => runBot(room, actorId), delay)
   botTimers.set(room.code, timer)
 }
 

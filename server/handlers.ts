@@ -15,7 +15,7 @@ import {
   newRoomPlayer,
   save,
 } from './rooms'
-import { scheduleBot, setOnAfterMutation } from './botScheduler'
+import { clearBotTimer, FAST_BOT_DELAY_MS, scheduleBot, setOnAfterMutation } from './botScheduler'
 
 const MIN_PLAYERS = Number(process.env.MIN_PLAYERS ?? 2)
 
@@ -45,6 +45,12 @@ function roomPublic(room: Room) {
   }
 }
 
+// True when at least one human player has a live socket (pause only makes
+// sense if someone is actually looking at the summary).
+function hasConnectedHuman(room: Room): boolean {
+  return room.players.some((p) => !p.isBot && p.socketId != null)
+}
+
 // The single post-mutation choke point: persist → broadcast → auto-score →
 // schedule next bot. Registered with the bot scheduler so bots route through
 // the same broadcast path.
@@ -63,6 +69,13 @@ function afterMutation(room: Room): void {
         results: scored.finalResults,
         game: serializeGame(scored),
       })
+    } else if (hasConnectedHuman(room)) {
+      // Day is fully played and scored — hold bot play until a human
+      // dismisses the summary (game:continue). No bots act under the overlay.
+      room.pausedForSummary = true
+      clearBotTimer(room.code)
+      save(room)
+      return
     }
   }
   scheduleBot(room)
@@ -290,9 +303,33 @@ export function registerHandlers(io: Server): void {
           gp.difficulty = rp.difficulty
         }
       }
+      room.pausedForSummary = false
       save(room)
       broadcastRoom(room, 'game:board', { game: serializeGame(room.game) })
       scheduleBot(room)
+    })
+
+    // A human dismissed the day-scoring summary — release the bot hold.
+    socket.on('game:continue', () => {
+      const room = getRoomBySocket(socket.id)
+      if (!room || !room.game) return
+      if (!room.pausedForSummary) return
+      room.pausedForSummary = false
+      save(room)
+      scheduleBot(room)
+    })
+
+    // Speed up / slow down bot play for this room (e.g. when the player's
+    // ship is full and they are out of the round).
+    socket.on('game:setSpeed', ({ fast } = {}) => {
+      const room = getRoomBySocket(socket.id)
+      if (!room || !room.game) return
+      const next = fast ? FAST_BOT_DELAY_MS : 800
+      if (room.botDelayMs === next) return
+      room.botDelayMs = next
+      save(room)
+      clearBotTimer(room.code)
+      scheduleBot(room) // re-schedule any pending bot at the new delay
     })
 
     // ------------------------------------------------------------------

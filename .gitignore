@@ -2,6 +2,10 @@ node_modules/
 dist/
 *.log
 data/refs/
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.tsbuildinfo
 *.bak
 .bak*
 .DS_Store

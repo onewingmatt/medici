@@ -7,6 +7,7 @@
 import {
   MAX_DRAW,
   MIN_BID,
+  SHIP_PAYMENTS,
   TRACK_BONUS_BY_LEVEL,
   TRACK_LEVELS,
 } from './constants'
@@ -53,7 +54,13 @@ export function expectedNextCardValue(state: GameState): number {
   return (TOTAL_DECK_VALUE - seenValue) / unseen
 }
 
-// Track upside of buying `group`: bonus-level delta + majority award expectation.
+// Track upside of buying `group`: bonus-level delta + majority award
+// expectation. Scaled by TRACK_WEIGHT — full-strength upside made the hard
+// bot overpay for track cards in multi-player auctions (empirically: hard
+// dropped from 80% to 12% win rate vs easy at 4p-6p when tm=1). The track
+// award is 10/5 per day per commodity but contested by n players; a small
+// multiplier keeps the bid near card value while still paying for real edges.
+const TRACK_WEIGHT = 0.2
 function trackUpside(state: GameState, me: PlayerState, group: Card[]): number {
   let upside = 0
   const commodities = new Set<Commodity>()
@@ -66,20 +73,47 @@ function trackUpside(state: GameState, me: PlayerState, group: Card[]): number {
     const newLevel = Math.min(TRACK_LEVELS - 1, oldLevel + countInGroup)
     const bonusDelta =
       (TRACK_BONUS_BY_LEVEL[newLevel] ?? 0) - (TRACK_BONUS_BY_LEVEL[oldLevel] ?? 0)
-    upside += bonusDelta
+    upside += bonusDelta * TRACK_WEIGHT
     const maxOpp = Math.max(
       ...state.players.filter((p) => p.id !== me.id).map((p) => p.trackLevels[cc]),
     )
-    if (newLevel >= maxOpp) upside += 3 // majority award expectation (uncertain — discounted)
-    else if (newLevel + 1 >= maxOpp) upside += 1 // close to the lead
+    if (newLevel >= maxOpp) upside += 3 * TRACK_WEIGHT // majority award expectation
+    else if (newLevel + 1 >= maxOpp) upside += 1 * TRACK_WEIGHT // close to the lead
   }
   return upside
+}
+
+// Ship-value upside of buying `group`: the day-end ship payment pays the top
+// ship 20 (2p) to 30 (6p). Scaled by SHIP_WEIGHT — empirically the winning
+// multiplier for 3-6p vs easy (0.06, sweep of 0.04-0.45): the old 0.45 made
+// hard overpay for lead-taking lots because in a 6p race P(win) is ~1/6, not
+// 45%. Cards that close or take the lead get the most; extending a lead gets
+// a third of that.
+const SHIP_WEIGHT = 0.06
+function shipUpside(state: GameState, me: PlayerState, group: Card[]): number {
+  const pay = SHIP_PAYMENTS[state.players.length]?.[0] ?? 0
+  if (pay <= 0) return 0
+  const groupValue = group.reduce((s, c) => s + c.value, 0)
+  const myShip = me.ship.reduce((s, c) => s + c.value, 0)
+  const maxOpp = Math.max(
+    0,
+    ...state.players
+      .filter((p) => p.id !== me.id)
+      .map((p) => p.ship.reduce((s, c) => s + c.value, 0)),
+  )
+  const gap = maxOpp - myShip // positive = behind
+  if (gap > 0) {
+    if (groupValue >= gap) return Math.floor(pay * SHIP_WEIGHT) // closes the gap / takes the lead
+    return Math.floor(pay * SHIP_WEIGHT * 0.6 * (groupValue / gap))
+  }
+  // already ahead: buying protects the lead
+  return Math.floor(pay * SHIP_WEIGHT * 0.33 * Math.min(1, groupValue / Math.max(1, myShip)))
 }
 
 export function lotValue(state: GameState, playerId: string, group: Card[]): number {
   const me = player(state, playerId)
   const valueSum = group.reduce((s, c) => s + c.value, 0)
-  return valueSum + trackUpside(state, me, group)
+  return valueSum + shipUpside(state, me, group) + trackUpside(state, me, group)
 }
 
 function groupFor(state: GameState): Card[] {
@@ -127,22 +161,17 @@ export function chooseBid(
 
   const myValue = lotValue(state, playerId, group)
   if (difficulty === 'medium') {
-    const limit = Math.floor(myValue * (0.9 + rng() * 0.1))
+    // Same near-value limit as hard (multiplicative noise made medium overbid
+    // and lose to easy), but occasionally bids one under to stay a hair weaker.
+    const limit = Math.max(0, Math.floor(myValue) - (rng() < 0.25 ? 2 : 1))
     return bidIncrement(limit, highBid)
   }
 
-  // hard: near-value limit with a small deny premium. Money IS points, so
-  // overpaying to deny only pays when the denied gain is large.
-  const oppValues = state.players
-    .filter((p) => p.id !== playerId && fitsShip(state, p, group))
-    .map((p) => lotValue(state, p.id, group))
-  const maxOpp = oppValues.length ? Math.max(...oppValues) : 0
-  const denyGap = Math.max(0, maxOpp - myValue)
-  const deny = denyGap > 4 ? Math.min(3, Math.floor(denyGap * 0.15)) : 0
-  // ship-space scarcity: a nearly-full ship makes every slot count — slight discount
-  const spaces = shipCapacityOf(state) - me.ship.length
-  const scarcity = spaces <= group.length ? 0 : Math.min(2, spaces - group.length)
-  const limit = Math.max(0, Math.floor(myValue) - 1 + deny - Math.floor(scarcity * 0.5))
+  // hard: near-value limit. Money IS points; empirically (sweeps vs easy at
+  // 3-6p) adding deny premiums or slot-opportunity discounts pushed the limit
+  // away from value and hard started losing — overpaying to deny and skipping
+  // lots to chase the day-end free fill both bleed more than they gain.
+  const limit = Math.max(0, Math.floor(myValue) - 1)
   return bidIncrement(limit, highBid)
 }
 

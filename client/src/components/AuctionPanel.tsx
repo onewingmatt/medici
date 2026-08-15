@@ -1,11 +1,12 @@
 // Auction panel — draw controls for the selector, the drawn group, and
 // bid/pass controls for the current bidder.
 import { useState } from 'react'
-import { COMMODITY_COLORS, PLAYER_COLORS } from './Board'
+import { COMMODITY_COLORS, COMMODITY_MARKS, MARK_FONT, markMaskDataUri, PLAYER_SCHEMES } from './Board'
 import type { Commodity } from '../../../shared/constants'
 import type { Card } from '../../../shared/types'
 import type { ClientGame } from '../types'
 import { emit } from '../socket'
+import { useStore } from '../store'
 
 const COMMODITY_INITIAL: Record<string, string> = {
   cloth: 'C',
@@ -17,19 +18,32 @@ const COMMODITY_INITIAL: Record<string, string> = {
 }
 
 export function GroupCard({ card, size = 'md' }: { card: Card; size?: 'sm' | 'md' | 'lg' }) {
-  const color = card.commodity === 'gold' ? '#d4a017' : COMMODITY_COLORS[card.commodity as Commodity]
+  const color = card.commodity === 'gold' ? '#B8860B' : COMMODITY_COLORS[card.commodity as Commodity]
   return (
     <div className={`group-card ${size}`} style={{ borderColor: color }}>
+      <span
+        className="card-mark group-mark"
+        style={
+          {
+            '--mark-color': color,
+            '--mark-mask': markMaskDataUri(COMMODITY_MARKS[card.commodity]),
+            fontFamily: MARK_FONT,
+          } as React.CSSProperties
+        }
+      >
+        {COMMODITY_MARKS[card.commodity]}
+      </span>
       <div className="group-card-value" style={{ background: color }}>
         {card.value}
       </div>
-      <div className="group-card-commodity">{COMMODITY_INITIAL[card.commodity]}</div>
+      <div className="group-card-commodity" style={{ color }}>{COMMODITY_INITIAL[card.commodity]}</div>
     </div>
   )
 }
 
 export function AuctionPanel({ game, yourId }: { game: ClientGame; yourId: string | null }) {
   const [bidAmount, setBidAmount] = useState(1)
+  const playerColors = useStore((s) => PLAYER_SCHEMES[s.playerScheme]?.colors ?? PLAYER_SCHEMES.bright.colors)
 
   if (!yourId) return null
   const me = game.players.find((p) => p.id === yourId)
@@ -135,9 +149,12 @@ export function AuctionPanel({ game, yourId }: { game: ClientGame; yourId: strin
         <span>Deck: {game.deckCount} cards</span>
         <span>Discarded: {game.discarded.length}</span>
         <span>Day {game.day}/3</span>
-        <span className="money-indicator" style={{ borderColor: PLAYER_COLORS[game.playerOrder.indexOf(yourId) % PLAYER_COLORS.length] }}>
+        <span
+          className="money-indicator"
+          style={{ borderColor: playerColors[game.playerOrder.indexOf(yourId) % playerColors.length] }}
+        >
           {me.money >= 100 && <small>+100 </small>}
-          {me.money} florins
+          {me.money >= 100 ? me.money - 100 : me.money} florins
         </span>
       </div>
     </div>

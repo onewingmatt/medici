@@ -35,16 +35,16 @@ export interface AuctionState {
 }
 
 export type EngineEvent =
-  | { type: 'day_start'; day: number; startPlayerId: string; deckCount: number }
-  | { type: 'draw'; playerId: string; card: Card; groupSize: number }
-  | { type: 'auction_start'; selectorId: string; group: Card[]; bidOrder: string[] }
-  | { type: 'bid'; playerId: string; amount: number }
-  | { type: 'pass'; playerId: string }
-  | { type: 'sold'; buyerId: string; amount: number; group: Card[] }
-  | { type: 'discarded'; group: Card[] }
-  | { type: 'free_fill'; playerId: string; cards: Card[]; deckEmpty: boolean }
-  | { type: 'day_end'; day: number; reason: 'deck_empty' | 'ships_full' | 'stalled' }
-  | { type: 'game_over'; winnerIds: string[] }
+  | { type: 'day_start'; day: number; startPlayerId: string; deckCount: number; ts: number }
+  | { type: 'draw'; playerId: string; card: Card; groupSize: number; ts: number }
+  | { type: 'auction_start'; selectorId: string; group: Card[]; bidOrder: string[]; ts: number }
+  | { type: 'bid'; playerId: string; amount: number; ts: number }
+  | { type: 'pass'; playerId: string; ts: number }
+  | { type: 'sold'; buyerId: string; amount: number; group: Card[]; ts: number }
+  | { type: 'discarded'; group: Card[]; ts: number }
+  | { type: 'free_fill'; playerId: string; cards: Card[]; deckEmpty: boolean; ts: number }
+  | { type: 'day_end'; day: number; reason: 'deck_empty' | 'ships_full' | 'stalled'; ts: number }
+  | { type: 'game_over'; winnerIds: string[]; ts: number }
 
 export interface ShipPaymentLine {
   playerId: string

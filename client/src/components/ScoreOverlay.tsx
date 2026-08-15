@@ -6,7 +6,15 @@ import type { ClientGame } from '../types'
 import { emit } from '../socket'
 import { useStore } from '../store'
 
-export function ScoreOverlay({ game, yourId }: { game: ClientGame; yourId: string | null }) {
+export function ScoreOverlay({
+  game,
+  yourId,
+  onShowRules,
+}: {
+  game: ClientGame
+  yourId: string | null
+  onShowRules?: () => void
+}) {
   const dismissScored = useStore((s) => s.dismissScored)
   const isGameOver = game.phase === 'game_over'
   const nameOf = (id: string) => game.players.find((p) => p.id === id)?.name ?? id
@@ -123,9 +131,22 @@ export function ScoreOverlay({ game, yourId }: { game: ClientGame; yourId: strin
               Play again
             </button>
           ) : (
-            <button className="btn btn-primary" onClick={dismissScored}>
-              Continue
-            </button>
+            <>
+              {onShowRules && (
+                <button className="btn" onClick={onShowRules}>
+                  Scoring reference
+                </button>
+              )}
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  dismissScored()
+                  emit('game:continue')
+                }}
+              >
+                Continue
+              </button>
+            </>
           )}
         </div>
       </div>

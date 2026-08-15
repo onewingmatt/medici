@@ -1,24 +1,25 @@
 // Board geometry — matches the physical Medici board:
-// square board, circular money track 0-99 around the edge (clockwise from top),
-// five inward-pointing triangular commodity tracks, golden crest at center.
+// square board, five wedge-shaped commodity tracks radiating from the
+// center, pentagonal crest at center.
+//
+// The five tracks are SECTORS (radial sides, flat inner end), each spanning
+// 36° either side of its centerline. Five x 72° = 360°, so adjacent tracks
+// share an exact edge. The inner end of each track is a chord that lies
+// exactly on one side of the central pentagon (circumradius = TRACK_INNER),
+// so tracks and crest touch with no gaps.
 export const CX = 500
 export const CY = 500
 
-export const MONEY_RADIUS = 462 // number positions
-export const COUNTER_RADIUS = 436 // player counters on the money track
-export const TRACK_OUTER = 402 // triangle base (level 0, gold frame) — clear of the money ring
-export const TRACK_INNER = 168 // triangle apex (level 7, toward center)
-export const CREST_RADIUS = 150
-export const TRACK_SPREAD = 26 // half-angle of each triangle at the base
+export const MONEY_RADIUS = 462 // legacy (unused, kept for reference)
+export const COUNTER_RADIUS = 436 // legacy
+export const TRACK_OUTER = 402 // base (level 0, gold frame)
+export const TRACK_INNER = 110 // inner end of the tracks = pentagon circumradius
+export const CREST_RADIUS = TRACK_INNER // central pentagon circumradius
+export const TRACK_SPREAD = 36 // half-angle of each sector (36 x 2 x 5 = 360)
+export const PENTAGON_VERTEX_ANGLE = -54 // first vertex angle (between wedge centerlines)
 
 export const TRACK_LEVELS = 8
-export const MONEY_MAX = 100 // track runs 0-99
-
-// Angle in degrees: 0 at 12 o'clock, clockwise (matches the physical board's
-// clockwise money track).
-export function moneyAngle(m: number): number {
-  return ((m % MONEY_MAX) / MONEY_MAX) * 360 - 90
-}
+export const MONEY_MAX = 100
 
 export function pt(cx: number, cy: number, r: number, deg: number): [number, number] {
   const rad = (deg * Math.PI) / 180
@@ -26,31 +27,41 @@ export function pt(cx: number, cy: number, r: number, deg: number): [number, num
 }
 
 export interface TrackGeom {
-  apex: [number, number]
+  centerAngle: number
   baseLeft: [number, number]
   baseRight: [number, number]
-  centerAngle: number
+  innerLeft: [number, number]
+  innerRight: [number, number]
 }
 
-// Track i (0..4) centered at angle -90 + i*72, apex pointing to the center.
+// Track i (0..4) centered at angle -90 + i*72, radiating outward from the
+// pentagon. Radial sides: inner and outer corners share the same spread.
 export function trackGeom(i: number): TrackGeom {
   const centerAngle = -90 + i * 72
-  const [ax, ay] = pt(CX, CY, TRACK_INNER, centerAngle)
   const [blx, bly] = pt(CX, CY, TRACK_OUTER, centerAngle - TRACK_SPREAD)
   const [brx, bry] = pt(CX, CY, TRACK_OUTER, centerAngle + TRACK_SPREAD)
-  return { apex: [ax, ay], baseLeft: [blx, bly], baseRight: [brx, bry], centerAngle }
+  const [ilx, ily] = pt(CX, CY, TRACK_INNER, centerAngle - TRACK_SPREAD)
+  const [irx, iry] = pt(CX, CY, TRACK_INNER, centerAngle + TRACK_SPREAD)
+  return { centerAngle, baseLeft: [blx, bly], baseRight: [brx, bry], innerLeft: [ilx, ily], innerRight: [irx, iry] }
 }
 
 export function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
 }
 
-// Point on the track at parameter t (0 = base/outer, 1 = apex/center).
+// Edge of the track at parameter t (0 = base/outer, 1 = inner/center).
+export function trackEdge(g: TrackGeom, t: number, side: 'left' | 'right'): [number, number] {
+  const from = side === 'left' ? g.baseLeft : g.baseRight
+  const to = side === 'left' ? g.innerLeft : g.innerRight
+  return [lerp(from[0], to[0], t), lerp(from[1], to[1], t)]
+}
+
+// Midpoint of the two edges at parameter t.
 export function trackPoint(g: TrackGeom, t: number): [number, number] {
-  const leftX = lerp(g.baseLeft[0], g.apex[0], t)
-  const leftY = lerp(g.baseLeft[1], g.apex[1], t)
-  const rightX = lerp(g.baseRight[0], g.apex[0], t)
-  const rightY = lerp(g.baseRight[1], g.apex[1], t)
+  const leftX = lerp(g.baseLeft[0], g.innerLeft[0], t)
+  const leftY = lerp(g.baseLeft[1], g.innerLeft[1], t)
+  const rightX = lerp(g.baseRight[0], g.innerRight[0], t)
+  const rightY = lerp(g.baseRight[1], g.innerRight[1], t)
   return [lerp(leftX, rightX, 0.5), lerp(leftY, rightY, 0.5)]
 }
 
@@ -63,11 +74,6 @@ export function bandPolygon(g: TrackGeom, L: number): string {
   const p1b = trackEdge(g, t1, 'right')
   const p1a = trackEdge(g, t1, 'left')
   return `${p0a[0]},${p0a[1]} ${p0b[0]},${p0b[1]} ${p1b[0]},${p1b[1]} ${p1a[0]},${p1a[1]}`
-}
-
-export function trackEdge(g: TrackGeom, t: number, side: 'left' | 'right'): [number, number] {
-  const from = side === 'left' ? g.baseLeft : g.baseRight
-  return [lerp(from[0], g.apex[0], t), lerp(from[1], g.apex[1], t)]
 }
 
 // Midpoint of band L (where counters and bonus labels sit).
@@ -85,4 +91,9 @@ export function bandPoint(g: TrackGeom, L: number, fraction: number): [number, n
   const left = trackEdge(g, t, 'left')
   const right = trackEdge(g, t, 'right')
   return [lerp(left[0], right[0], fraction), lerp(left[1], right[1], fraction)]
+}
+
+// The five pentagon vertices, between the track centerlines.
+export function pentagonPoints(): [number, number][] {
+  return Array.from({ length: 5 }, (_, i) => pt(CX, CY, CREST_RADIUS, PENTAGON_VERTEX_ANGLE + i * 72))
 }

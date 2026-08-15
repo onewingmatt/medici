@@ -20,6 +20,12 @@ export interface Room {
   game: GameState | null
   createdAt: number
   updatedAt: number
+  // When true, the bot scheduler holds until a human sends game:continue
+  // (the day-scoring summary overlay is up). Optional so rooms persisted
+  // before this feature load cleanly.
+  pausedForSummary?: boolean
+  // Per-room bot action delay in ms. Optional; defaults to BOT_DELAY_MS.
+  botDelayMs?: number
 }
 
 const rooms = new Map<string, Room>()
@@ -62,6 +68,8 @@ export function createRoom(hostName: string): { room: Room; host: RoomPlayer } {
     game: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    pausedForSummary: false,
+    botDelayMs: 800,
   }
   rooms.set(code, room)
   saveRoom(room)
@@ -153,6 +161,9 @@ export function restorePersistedRooms(): void {
   for (const room of loadRooms()) {
     // Only restore rooms that look alive (recent activity)
     if (Date.now() - room.updatedAt < ROOM_TTL_MS) {
+      // Never restore a mid-summary pause — nobody is holding the overlay
+      // after a server restart; the game should resume instead of stalling.
+      room.pausedForSummary = false
       rooms.set(room.code, room)
     } else {
       deleteRoom(room.code)

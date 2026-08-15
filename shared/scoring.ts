@@ -159,7 +159,7 @@ export function scoreDay(state: GameState, rng: RNG): GameState {
       phase: 'game_over',
       finalResults: totals,
       scoringLog: [...scoringLog, { type: 'game_over', winnerIds, totals }],
-      history: [...state.history, { type: 'game_over', winnerIds }],
+      history: [...state.history, { type: 'game_over', winnerIds, ts: Date.now() }],
     }
   }
 

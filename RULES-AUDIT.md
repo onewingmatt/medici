@@ -16,7 +16,7 @@ flagged here; FAIL = not implemented or wrong.
 | 1 | 36 cards: 7 each of cloth/fur/grain/dye/spice (0,1,2,3,4,5,5) + 1 gold (10, colorless) | `shared/constants.ts` CARD_VALUES, `shared/deck.ts` buildDeck | tests: deck length 36, 7/commodity, values, gold | PASS |
 | 2 | Ships: 5 cargo spaces (7 in 2p with small mats) | `constants.ts` SHIP_CAPACITY/SHIP_CAPACITY_2P, engine `shipCapacityOf` | tests: 2p capacity 7 and fits-a-3-card-group-at-4-loaded; 3p overflow rejected | PASS |
 | 3 | Money track 0-99; start 40 florins (2-4p), 30 (5-6p) | `constants.ts` startingMoney | tests: starting money per count | PASS |
-| 4 | Money may exceed 99 (counter flips, +100) | engine money is an unbounded integer; client shows +100 badge | not unit-tested; client renders `+100` prefix when money >= 100 | NOTE (UI-verified) |
+| 4 | Money may exceed 99 (counter flips, +100) | engine money is an unbounded integer; client shows `+100` flip marker + track value (e.g. 145 → "+100 45") | tests/rules-edge.test.ts asserts money stays within 0-199 across full games; client fixed 2026-08-15 (previously showed "+100 145" which read as 245) | PASS |
 | 5 | All counters start on the bottom (8th) level (gold frame = 0) of each track | createGame sets trackLevels to 0 for all commodities | tests: all tracks 0 at start | PASS |
 | 6 | Cards in play per day: 18/18/24/30/36 for 2p-6p; remove rest unseen | `constants.ts` CARDS_PER_DAY, setupDay | tests: deck+removed = 36, deck = CARDS_PER_DAY[n] | PASS |
 | 7 | Reshuffle all 36 and re-remove every day | startNextDay → setupDay (fresh shuffle each day) | tests: day-2 deck differs from day 1, discarded reset | PASS |
@@ -84,19 +84,20 @@ flagged here; FAIL = not implemented or wrong.
 ## Interpretation Notes & Known Limitations
 
 1. **6-player ship payment table.** The starting prompt carried the older American edition values (30,20,10,10,5,0); the Grail 2016 rulebook says 3rd place pays **15**. Implemented per the rulebook. See SCOPE.md Discrepancy Log #1.
-2. **Bonus level mapping.** The rulebook says only "5, 10 or 20 (as noted on the board)". Reconstructed from the rulebook's own examples (top = +20, second-highest = +10), the old-edition reference (6 cards → 10, 7 cards → 20), and the Steamforged board imagery (+5/+10/+20 bottom-to-top): level 6 = 5, level 7 = 10, level 8 (top) = 20 (counting the gold frame as level 1). See SCOPE.md Discrepancy Log #2.
+2. **Bonus level mapping (verified against rulebook 2026-08-15).** The rulebook (ed. 3.1, qugs.org/rules/r46.pdf) states the top three levels pay "5, 10 or 20 (as noted on the board)" and its worked example confirms top = +20, second = +10; the third bonus level is +5. Implemented as level 5→5, 6→10, 7→20 counting from the gold frame as level 0, which matches the example (yellow at top: 10 award + 20 bonus; white/green at second: 5÷2 rounded + 10 bonus).
 3. **Presentation rule interpretation.** "Cannot present a group larger than at least one player can bid for" is implemented as *at least one OTHER player* (connected, has room, has >= 1 florin). The rulebook's worked example frames it as another player. A stricter reading (capacity only, ignoring money) would let the selector present sham lots; the money check prevents that. Edge case: if no other player can bid even a 1-card group, the engine ends the day (`stalled` reason) rather than letting the selector draw into a sham auction.
 4. **Disconnected players in auctions.** Disconnected players are excluded from bid order and selector rotation (consistent with the established reconnect pattern: keep their state, skip their turns). A day with no connected selectable player ends immediately. Rare in practice; bots never disconnect.
-5. **Bot balance (observed).** In all-bot sweeps, easy bots win more than medium/hard, especially in 2p/3p. Root cause: easy's frugal, noisy bidding keeps florins (money IS points) and its conservative drawing makes it the frequent free-fill beneficiary. Increment bidding (bid just above the current high, up to a valuation limit) fixed the earlier degenerate behavior where bots paid their full valuation even uncontested; stalls dropped to zero. Difficulty tuning is iterative and favors further work on the hard bot's valuation of track upside.
+5. **Bot balance (fixed 2026-08-15).** Earlier sweeps showed easy bots winning more than medium/hard, especially at 2p-3p. Root cause found and fixed: the hard bot's upside terms (ship-value 0.45×pay for taking the ship-race lead, full-strength track bonus deltas, deny premiums) inflated its auction limits far above card value. In multiplayer auctions the price is set by the second-highest limit, so hard systematically overpaid — money IS points. Empirical sweeps (sim/sweepup*.mjs) established the winning multipliers: ship upside ×0.06, track upside ×0.2, no deny premium, no slot-opportunity discount (both of those tested worse at 3-6p). Results at 200-300 games each: hard beats easy 62% (2p), 84% (3p), 80% (4p), 88% (5p), 89% (6p); medium ≈ hard; easy < medium. The day-end free-fill rule (last ship with room fills free) is a real strategic factor in 2p but chasing it via slot discounts loses more than it gains at 4-6p.
 
 ## Simulation Evidence
 
 - `sim/headless.mjs` — single full game, any seed/count.
-- `sim/sweep.mjs` — 150 games (seeds 1-30 × 2-6 players), all-bot:
-  - completed: 150/150, stuck: 0
-  - day end reasons: ships_full 449, deck_empty 1, stalled 0
-  - winner money: min 88, max 199, avg 141.1
-  - 63 unit tests / 192 assertions green; `npm run typecheck` clean.
+- `sim/sweep.mjs` — 250 games (seeds 1-50 × 2-6 players), all-bot:
+  - completed: 250/250, stuck: 0
+  - day end reasons: ships_full 629, deck_empty 121, stalled 0
+  - winner money: min 83, max 199, avg 135.4 (always within one +100 flip)
+  - 74 unit tests / 231+ assertions green; `npm run typecheck` clean.
+- **Independent rules pass (2026-08-15)**: `tests/rules-edge.test.ts` re-derived edge cases from the rulebook PDF rather than from the existing tests — the rulebook's worked auction example (Adam/Kylie/Jason/Diane, Adam wins 8 as last bidder), presentation rule (selector may present a group larger than their own ship; must-pass for would-be overflowers), 0-florin bidders must pass, integer bids, bid-equals-money → exactly 0, money reconciliation (post-score money = pre-score + ship payment + all track totals), 2p ship tie → 10 each, 3-way top ship tie → 20 each, and 60 full bot games asserting money 0-199, track bounds, sorted final results, and consistent winnerIds.
 - Socket integration (`test-flow.mjs`): full 3-day game over real sockets (1 human observer + 3 bots) → game_over with results; deck hidden from clients; day_total × 3.
 - Persistence (`scripts/persist-check.mjs`): room with in-progress game restored from SQLite after server restart; reconnect by token re-associates the player.
 

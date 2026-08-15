@@ -144,6 +144,7 @@ function setupDay(state: GameState, rng: RNG): GameState {
         day: state.day,
         startPlayerId: state.playerOrder[startIdx],
         deckCount: deck.length,
+        ts: Date.now(),
       },
     ],
   }
@@ -228,7 +229,7 @@ export function drawCard(state: GameState, playerId: string): ActionResult {
   const card = s.deck[0]
   s.deck = s.deck.slice(1)
   s.group = [...s.group, card]
-  s.history.push({ type: 'draw', playerId, card, groupSize: s.group.length })
+  s.history.push({ type: 'draw', playerId, card, groupSize: s.group.length, ts: Date.now() })
   return { ok: true, state: s }
 }
 
@@ -259,6 +260,7 @@ export function stopDraw(state: GameState, playerId: string): ActionResult {
     selectorId: playerId,
     group: auction.group,
     bidOrder: auction.bidOrder,
+    ts: Date.now(),
   })
   return { ok: true, state: s }
 }
@@ -287,7 +289,7 @@ export function bid(state: GameState, playerId: string, amount: number): ActionR
   }
   a.highBid = amount
   a.highBidderId = playerId
-  s.history.push({ type: 'bid', playerId, amount })
+  s.history.push({ type: 'bid', playerId, amount, ts: Date.now() })
   return advanceAuction(s)
 }
 
@@ -298,7 +300,7 @@ export function pass(state: GameState, playerId: string): ActionResult {
   }
   const a = s.auction
   if (a.bidOrder[a.currentBidderIndex] !== playerId) return err('Not your turn to bid')
-  s.history.push({ type: 'pass', playerId })
+  s.history.push({ type: 'pass', playerId, ts: Date.now() })
   return advanceAuction(s)
 }
 
@@ -322,10 +324,10 @@ function resolveAuction(s: GameState): ActionResult {
     const buyer = player(s, a.highBidderId)
     buyer.ship = [...buyer.ship, ...a.group]
     buyer.money -= a.highBid
-    s.history.push({ type: 'sold', buyerId: buyer.id, amount: a.highBid, group: a.group })
+    s.history.push({ type: 'sold', buyerId: buyer.id, amount: a.highBid, group: a.group, ts: Date.now() })
   } else {
     s.discarded = [...s.discarded, ...a.group]
-    s.history.push({ type: 'discarded', group: a.group })
+    s.history.push({ type: 'discarded', group: a.group, ts: Date.now() })
   }
   s.auction = null
   s.phase = 'draw'
@@ -357,6 +359,7 @@ function freeFill(s: GameState, last: PlayerState): ActionResult {
     playerId: last.id,
     cards,
     deckEmpty: s.deck.length === 0,
+    ts: Date.now(),
   })
   return endDay(s, 'ships_full')
 }
@@ -364,6 +367,6 @@ function freeFill(s: GameState, last: PlayerState): ActionResult {
 export function endDay(s: GameState, reason: 'deck_empty' | 'ships_full' | 'stalled'): ActionResult {
   s.phase = 'scoring'
   s.dayEnded = true
-  s.history.push({ type: 'day_end', day: s.day, reason })
+  s.history.push({ type: 'day_end', day: s.day, reason, ts: Date.now() })
   return { ok: true, state: s }
 }
